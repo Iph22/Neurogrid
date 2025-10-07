@@ -1,0 +1,8 @@
+# Backend Dependencies
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+
+# Data Processing
+pandas

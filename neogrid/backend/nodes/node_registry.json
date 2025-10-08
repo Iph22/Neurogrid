@@ -1,28 +1,60 @@
 {
   "nodes": [
     {
+      "id": "input_node",
+      "label": "Input Node",
+      "description": "Handles data ingestion from various sources (text, JSON, CSV, numbers).",
+      "params": ["input", "input_type"],
+      "category": "workflow"
+    },
+    {
+      "id": "preprocessing_node",
+      "label": "Preprocessing Node",
+      "description": "Cleans, normalizes, and transforms data for AI processing.",
+      "params": ["input", "operations", "filters"],
+      "category": "workflow"
+    },
+    {
       "id": "summarizer",
       "label": "Text Summarizer",
       "description": "Summarizes long text passages using a BART model.",
-      "params": ["input"]
+      "params": ["input"],
+      "category": "ai_model"
     },
     {
       "id": "image_caption",
       "label": "Image Captioning",
       "description": "Generates a caption for an image from a URL.",
-      "params": ["input"]
+      "params": ["input"],
+      "category": "ai_model"
     },
     {
       "id": "code_analyzer",
       "label": "Code Analyzer",
       "description": "Analyzes Python code for syntax errors and structure.",
-      "params": ["input"]
+      "params": ["input"],
+      "category": "ai_model"
     },
     {
       "id": "sentiment",
       "label": "Sentiment Analysis",
       "description": "Analyzes text for sentiment (positive, negative, neutral).",
-      "params": ["input"]
+      "params": ["input"],
+      "category": "ai_model"
+    },
+    {
+      "id": "postprocessing_node",
+      "label": "Postprocessing Node",
+      "description": "Processes and refines AI model outputs with aggregation and filtering.",
+      "params": ["input", "operations", "aggregation_type", "confidence_threshold"],
+      "category": "workflow"
+    },
+    {
+      "id": "output_node",
+      "label": "Output Node",
+      "description": "Formats and presents final workflow results in various formats.",
+      "params": ["input", "output_format", "include_summary"],
+      "category": "workflow"
     }
   ]
 }

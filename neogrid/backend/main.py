@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 import httpx
 import json
 
-from .nodes import summarizer, image_caption, code_analyzer, sentiment
-from .database import database, models, schemas, auth
+from .nodes import summarizer, image_caption, code_analyzer, sentiment, input_node, preprocessing_node, postprocessing_node, output_node
+from .database import database, models, schemas
+from .routers import auth
+from .workflow_engine import workflow_engine
 
 # Create all database tables on startup
 models.Base.metadata.create_all(bind=database.engine)
@@ -27,25 +29,49 @@ app.add_middleware(
 
 # --- Routers ---
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(summarizer.router, prefix="/nodes/summarizer", tags=["AI Nodes"])
-app.include_router(image_caption.router, prefix="/nodes/image_caption", tags=["AI Nodes"])
-app.include_router(code_analyzer.router, prefix="/nodes/code_analyzer", tags=["AI Nodes"])
-app.include_router(sentiment.router, prefix="/nodes/sentiment", tags=["AI Nodes"])
+app.include_router(summarizer.router,
+                   prefix="/nodes/summarizer", tags=["AI Nodes"])
+app.include_router(image_caption.router,
+                   prefix="/nodes/image_caption", tags=["AI Nodes"])
+app.include_router(code_analyzer.router,
+                   prefix="/nodes/code_analyzer", tags=["AI Nodes"])
+app.include_router(
+    sentiment.router, prefix="/nodes/sentiment", tags=["AI Nodes"])
+app.include_router(input_node.router,
+                   prefix="/nodes/input_node", tags=["Workflow Nodes"])
+app.include_router(preprocessing_node.router,
+                   prefix="/nodes/preprocessing_node", tags=["Workflow Nodes"])
+app.include_router(postprocessing_node.router,
+                   prefix="/nodes/postprocessing_node", tags=["Workflow Nodes"])
+app.include_router(output_node.router,
+                   prefix="/nodes/output_node", tags=["Workflow Nodes"])
 
 
 # --- Node Registry ---
 @app.get("/nodes/registry")
 def get_node_registry():
     """Returns the list of available nodes from a JSON file."""
+    import os
+    from pathlib import Path
+    
+    # Get the directory where this main.py file is located
+    current_dir = Path(__file__).parent
+    registry_path = current_dir / "nodes" / "node_registry.json"
+    
     try:
-        with open("neogrid/backend/nodes/node_registry.json") as f:
+        with open(registry_path) as f:
             return json.load(f)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Node registry not found.")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Node registry not found at {registry_path}"
+        )
     except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail="Error reading node registry.")
+        raise HTTPException(
+            status_code=500, detail="Error reading node registry.")
 
 # --- Workflow CRUD Endpoints ---
+
 
 @app.post("/workflows/", response_model=schemas.Workflow)
 def create_workflow(
@@ -59,6 +85,7 @@ def create_workflow(
     db.commit()
     db.refresh(db_workflow)
     return db_workflow
+
 
 @app.get("/workflows/", response_model=list[schemas.Workflow])
 def get_user_workflows(
@@ -78,7 +105,7 @@ async def execute_workflow(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Executes a workflow, logs the run, and stores the results.
+    Executes a workflow with enhanced sequential processing and data passing.
     """
     db_workflow = db.query(models.Workflow).filter(
         models.Workflow.id == workflow_id,
@@ -86,12 +113,15 @@ async def execute_workflow(
     ).first()
 
     if not db_workflow:
-        raise HTTPException(status_code=404, detail="Workflow not found or access denied.")
+        raise HTTPException(
+            status_code=404, detail="Workflow not found or access denied.")
 
     workflow_config = db_workflow.config_json
     nodes = workflow_config.get("nodes", [])
+    edges = workflow_config.get("edges", [])
     input_data = request_body.get("inputs", {})
 
+    # Create workflow run record
     db_run = models.WorkflowRun(
         workflow_id=workflow_id,
         input_json=input_data,
@@ -101,36 +131,25 @@ async def execute_workflow(
     db.commit()
     db.refresh(db_run)
 
-    results = {}
-    base_url = "http://127.0.0.1:8000"
+    try:
+        # Use enhanced workflow engine for execution
+        results = await workflow_engine.execute_workflow(nodes, edges, input_data)
+        
+        # Update run record with results
+        db_run.output_json = results
+        db.commit()
+        db.refresh(db_run)
 
-    async with httpx.AsyncClient() as client:
-        for node in nodes:
-            node_id = node.get("id")
-            node_type = node.get("type")
-            node_input = input_data.get(node_id, node.get("data", {}).get("input"))
-
-            if node_input is None:
-                results[node_id] = {"error": "No input provided for node."}
-                continue
-
-            node_url = f"{base_url}/nodes/{node_type}/infer"
-            payload = {"input": node_input}
-
-            try:
-                response = await client.post(node_url, json=payload, timeout=30.0)
-                response.raise_for_status()
-                node_result = response.json()
-                results[node_id] = node_result
-            except Exception as e:
-                error_detail = f"Error executing node '{node_type}' ({node_id}): {e}"
-                results[node_id] = {"error": error_detail}
-
-    db_run.output_json = results
-    db.commit()
-    db.refresh(db_run)
-
-    return db_run
+        return db_run
+        
+    except Exception as e:
+        # Update run record with error
+        error_results = {"execution_error": str(e)}
+        db_run.output_json = error_results
+        db.commit()
+        db.refresh(db_run)
+        
+        raise HTTPException(status_code=500, detail=f"Workflow execution failed: {str(e)}")
 
 
 @app.get("/", tags=["Health Check"])

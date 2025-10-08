@@ -24,12 +24,7 @@ export const registerUser = (username, password) => {
 };
 
 export const loginUser = (username, password) => {
-  const formData = new URLSearchParams();
-  formData.append('username', username);
-  formData.append('password', password);
-  return apiClient.post('/auth/login', formData, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  return apiClient.post('/auth/login', { username, password });
 };
 
 // --- Node Endpoints ---

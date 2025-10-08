@@ -17,12 +17,12 @@ import {
   registerUser,
   setAuthToken,
 } from '../utils/api';
-import NodeCard from './NodeCard';
+import EnhancedNodeCard from './EnhancedNodeCard';
 
 const initialNodes = [];
 
 const nodeTypes = {
-  customNode: NodeCard,
+  customNode: EnhancedNodeCard,
 };
 
 const WorkflowEditor = () => {
@@ -30,6 +30,8 @@ const WorkflowEditor = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [nodeRegistry, setNodeRegistry] = useState([]);
   const [nodeId, setNodeId] = useState(1);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [showConfigPanel, setShowConfigPanel] = useState(false);
 
   // Auth and Workflow state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -47,14 +49,34 @@ const WorkflowEditor = () => {
       try {
         const response = await getNodeRegistry();
         setNodeRegistry(response.data.nodes || []);
+        console.log("Node registry loaded successfully:", response.data);
       } catch (error) {
-        console.error("Failed to fetch node registry:", error);
+        console.error("Failed to fetch node registry:", {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          url: error.config?.url,
+          method: error.config?.method
+        });
+        // Set empty array as fallback to prevent UI issues
+        setNodeRegistry([]);
       }
     };
     fetchRegistry();
   }, []);
 
   const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+
+  const onNodeClick = useCallback((event, node) => {
+    setSelectedNode(node);
+    setShowConfigPanel(true);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
+    setShowConfigPanel(false);
+  }, []);
 
   const onNodeInputChange = (nodeId, inputValue) => {
     setNodes((nds) =>
@@ -73,15 +95,41 @@ const WorkflowEditor = () => {
     );
   };
 
-  const addNode = (nodeType, label) => {
+  const onNodeParamChange = (nodeId, params) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              params: params,
+            },
+          };
+        }
+        return node;
+      })
+    );
+  };
+
+  const addNode = (nodeType, label, category) => {
+    // Find node metadata from registry
+    const nodeMetadata = nodeRegistry.find(n => n.id === nodeType) || {};
+    
     const newNode = {
       id: `${nodeId}`,
       type: 'customNode',
       data: {
         label: label,
         nodeType: nodeType,
+        category: category,
+        description: nodeMetadata.description || '',
+        registryParams: nodeMetadata.params || [],
         input: '',
+        params: {},
         onInputChange: onNodeInputChange,
+        onParamChange: onNodeParamChange,
+        onDelete: deleteNode,
       },
       position: {
         x: Math.random() * 400,
@@ -91,6 +139,15 @@ const WorkflowEditor = () => {
     setNodes((nds) => nds.concat(newNode));
     setNodeId(nodeId + 1);
   };
+
+  const deleteNode = useCallback((nodeId) => {
+    setNodes((nds) => nds.filter(node => node.id !== nodeId));
+    setEdges((eds) => eds.filter(edge => edge.source !== nodeId && edge.target !== nodeId));
+    if (selectedNode && selectedNode.id === nodeId) {
+      setSelectedNode(null);
+      setShowConfigPanel(false);
+    }
+  }, [selectedNode]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -186,6 +243,7 @@ const WorkflowEditor = () => {
         data: {
             ...node.data,
             onInputChange: onNodeInputChange,
+            onParamChange: onNodeParamChange,
         }
     }));
     setNodes(loadedNodes);
@@ -193,30 +251,50 @@ const WorkflowEditor = () => {
     setSelectedWorkflowId(workflow.id);
   };
 
-  const AuthForm = () => (
+  const AuthForm = React.memo(() => (
     <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px', marginBottom: '10px' }}>
       <h3>User Authentication</h3>
-      <form>
-        <input
-          type="text"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          style={{ marginRight: '10px', padding: '5px' }}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{ marginRight: '10px', padding: '5px' }}
-        />
-        <button onClick={handleLogin} style={{ marginRight: '5px', padding: '5px 10px' }}>Login</button>
-        <button onClick={handleRegister} style={{ padding: '5px 10px' }}>Register</button>
+      <form onSubmit={(e) => e.preventDefault()}>
+        <div style={{ marginBottom: '10px' }}>
+          <input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            style={{ width: '100%', padding: '8px', marginBottom: '5px' }}
+            required
+          />
+        </div>
+        <div style={{ marginBottom: '10px' }}>
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ width: '100%', padding: '8px', marginBottom: '5px' }}
+            required
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '5px' }}>
+          <button
+            type="button"
+            onClick={handleLogin}
+            style={{ flex: 1, padding: '8px 10px', cursor: 'pointer' }}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            onClick={handleRegister}
+            style={{ flex: 1, padding: '8px 10px', cursor: 'pointer' }}
+          >
+            Register
+          </button>
+        </div>
       </form>
       {authError && <p style={{ color: 'red', marginTop: '10px' }}>{authError}</p>}
     </div>
-  );
+  ));
 
   const WorkflowControls = () => (
     <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
@@ -258,25 +336,111 @@ const WorkflowEditor = () => {
         ) : (
             <>
                 <h3>Add Nodes</h3>
-                {nodeRegistry.map((node) => (
-                  <button key={node.id} onClick={() => addNode(node.id, node.label)} style={{ display: 'block', width: '100%', marginBottom: '10px', padding: '10px' }}>
-                    {node.label}
-                  </button>
-                ))}
+                
+                {/* Workflow Nodes */}
+                <div style={{ marginBottom: '15px' }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#4CAF50', fontSize: '14px' }}>Workflow Nodes</h4>
+                  {nodeRegistry.filter(node => node.category === 'workflow').map((node) => (
+                    <button 
+                      key={node.id} 
+                      onClick={() => addNode(node.id, node.label, node.category)} 
+                      style={{ 
+                        display: 'block', 
+                        width: '100%', 
+                        marginBottom: '5px', 
+                        padding: '8px', 
+                        backgroundColor: '#E8F5E8',
+                        border: '1px solid #4CAF50',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {node.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* AI Model Nodes */}
+                <div style={{ marginBottom: '15px' }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#2196F3', fontSize: '14px' }}>AI Model Nodes</h4>
+                  {nodeRegistry.filter(node => node.category === 'ai_model').map((node) => (
+                    <button 
+                      key={node.id} 
+                      onClick={() => addNode(node.id, node.label, node.category)} 
+                      style={{ 
+                        display: 'block', 
+                        width: '100%', 
+                        marginBottom: '5px', 
+                        padding: '8px', 
+                        backgroundColor: '#E3F2FD',
+                        border: '1px solid #2196F3',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      {node.label}
+                    </button>
+                  ))}
+                </div>
+
                 <hr style={{ margin: '20px 0' }}/>
                 <WorkflowControls />
+                
+                {/* Node Configuration Panel */}
+                {showConfigPanel && selectedNode && (
+                  <div style={{ 
+                    marginTop: '20px', 
+                    border: '1px solid #ccc', 
+                    padding: '15px', 
+                    borderRadius: '5px',
+                    background: '#f5f5f5'
+                  }}>
+                    <h3 style={{ margin: '0 0 10px 0', fontSize: '14px' }}>Configure Node</h3>
+                    <div style={{ fontSize: '12px', marginBottom: '10px' }}>
+                      <strong>Type:</strong> {selectedNode.data.label}<br/>
+                      <strong>ID:</strong> {selectedNode.id}<br/>
+                      {selectedNode.data.description && (
+                        <><strong>Description:</strong> {selectedNode.data.description}<br/></>
+                      )}
+                    </div>
+                    <button 
+                      onClick={() => deleteNode(selectedNode.id)}
+                      style={{
+                        background: '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        padding: '5px 10px',
+                        borderRadius: '3px',
+                        cursor: 'pointer',
+                        fontSize: '11px'
+                      }}
+                    >
+                      Delete Node
+                    </button>
+                  </div>
+                )}
             </>
         )}
       </div>
       <div style={{ flex: 1, border: '1px solid #ccc', borderRadius: '5px' }}>
         <ReactFlow
-          nodes={nodes}
+          nodes={nodes.map(node => ({
+            ...node,
+            selected: selectedNode && selectedNode.id === node.id
+          }))}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           nodeTypes={nodeTypes}
           fitView
+          nodesDraggable={true}
+          nodesConnectable={true}
+          elementsSelectable={true}
         >
           <MiniMap />
           <Controls />

@@ -1,0 +1,28 @@
+{
+  "nodes": [
+    {
+      "id": "summarizer",
+      "label": "Text Summarizer",
+      "description": "Summarizes long text passages using a BART model.",
+      "params": ["input"]
+    },
+    {
+      "id": "image_caption",
+      "label": "Image Captioning",
+      "description": "Generates a caption for an image from a URL.",
+      "params": ["input"]
+    },
+    {
+      "id": "code_analyzer",
+      "label": "Code Analyzer",
+      "description": "Analyzes Python code for syntax errors and structure.",
+      "params": ["input"]
+    },
+    {
+      "id": "sentiment",
+      "label": "Sentiment Analysis",
+      "description": "Analyzes text for sentiment (positive, negative, neutral).",
+      "params": ["input"]
+    }
+  ]
+}

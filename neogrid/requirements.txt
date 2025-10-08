@@ -1,8 +1,26 @@
-# Backend Dependencies
+# --- Core Backend ---
 fastapi
 uvicorn[standard]
 pydantic
 httpx
+python-multipart
 
-# Data Processing
+# --- AI & ML ---
+transformers
+torch --index-url https://download.pytorch.org/whl/cpu
+sentencepiece
+
+# --- Image Processing ---
+Pillow
+requests
+
+# --- Database & Auth ---
+SQLAlchemy
+passlib[bcrypt]
+python-jose[cryptography]
+
+# --- Data Processing ---
 pandas
+
+# --- Testing ---
+pytest

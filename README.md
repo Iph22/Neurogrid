@@ -2,7 +2,7 @@
 The modular brain of energy systems
 # NeoGrid — Modular AI Energy System
 
-NeoGrid is an AI-driven smart energy optimizer that predicts and balances power distribution in real time.
+NeuroGrid is an AI-driven smart energy optimizer that predicts and balances power distribution in real time.
 Built under Arcyn’s Modulex ecosystem — where modular architecture meets intelligent design.
 
 ### Features
